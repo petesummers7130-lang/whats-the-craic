@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Craic Admin</title>
+<style>
+:root{--bg:#eaeeeb;--surface:#fff;--ink:#13232a;--muted:#566a6e;--line:#d3dbd7;--sea:#1f5a6b;--sea-ink:#fff;--ok:#2f7a3d;--bad:#b3261e;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0f171a;--surface:#162125;--ink:#e6eeec;--muted:#93a6a8;--line:#273840;--sea:#79b9cc;--sea-ink:#0f171a;--ok:#6fcf86;--bad:#ff8a7d;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px 16px 60px}
+main{max-width:760px;margin:0 auto}
+h1{font-size:28px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 20px}
+form.login{display:flex;gap:8px;flex-wrap:wrap}
+input{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:9px 11px;min-width:0;flex:1 1 220px}
+button{font:inherit;font-weight:600;border-radius:8px;padding:9px 14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+button.primary{background:var(--sea);border-color:var(--sea);color:var(--sea-ink)}
+.tabs{display:flex;gap:6px;margin:18px 0 10px}
+.tabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.item{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px;display:grid;gap:6px}
+.item h2{font-size:17px;margin:0}
+.meta{color:var(--muted);font-size:13px}
+.desc{margin:0;white-space:pre-wrap}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.tag{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px}
+.tag.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.msg{color:var(--muted)}
+.err{color:var(--bad)}
+a{color:var(--sea)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Submitted events</h1>
+  <p class="sub">Approve an event and it appears in What's the Craic within a minute. Remove it to take it down again. Contact emails are only shown here, never in the app.</p>
+  <form class="login" id="login">
+    <input type="password" id="key" placeholder="Admin password" autocomplete="current-password" aria-label="Admin password">
+    <button class="primary" type="submit">Show submissions</button>
+  </form>
+  <p class="err" id="err" role="alert"></p>
+  <div id="panel" hidden>
+    <div class="tabs" role="group" aria-label="Show">
+      <button data-f="new" aria-pressed="true">Waiting</button>
+      <button data-f="approved" aria-pressed="false">Approved</button>
+      <button data-f="all" aria-pressed="false">All</button>
+    </div>
+    <div id="list"></div>
+  </div>
+</main>
+<script>
+(function(){
+  let key='';try{key=sessionStorage.getItem('craic-admin')||''}catch(e){}
+  let subs=[],filter='new';
+  const $=id=>document.getElementById(id);
+  const api=(opts={})=>fetch('/api/admin-submissions',{...opts,headers:{'x-admin-key':key,'content-type':'application/json'}}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('Error '+r.status));return j});
+  function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+  function render(){
+    const list=$('list');list.textContent='';
+    const shown=subs.filter(s=>filter==='all'||(filter==='approved'?s.approved:!s.approved));
+    if(!shown.length){list.append(el('p','msg',filter==='new'?'Nothing waiting. New submissions appear here.':'Nothing here yet.'));return}
+    shown.forEach(s=>{const d=s.data||{};const box=el('div','item');
+      const h=el('h2',null,d.event||'(no name)');
+      const when=[d.date,d.time].filter(Boolean).join(' at ');
+      const meta=el('div','meta',[when,[d.venue,d.town].filter(Boolean).join(', ')].filter(Boolean).join(' · '));
+      box.append(h,meta);
+      if(d.description)box.append(el('p','desc',d.description));
+      const info=el('div','meta');
+      if(d.link&&/^https?:\/\//i.test(d.link)){const a=el('a',null,d.link);a.href=d.link;a.target='_blank';a.rel='noopener noreferrer';info.append('Link: ',a)}
+      if(d.email)info.append((d.link?' · ':'')+'Contact: '+d.email);
+      info.append(' · Sent '+new Date(s.created).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}));
+      box.append(info);
+      const row=el('div','row');
+      if(s.approved){row.append(el('span','tag ok','In the app'));const b=el('button',null,'Remove from app');b.onclick=()=>act(s,false,b);row.append(b)}
+      else{const b=el('button','primary','Approve');b.onclick=()=>act(s,true,b);row.append(b)}
+      box.append(row);list.append(box)});
+  }
+  async function act(s,approve,btn){btn.disabled=true;$('err').textContent='';
+    try{await api({method:'POST',body:JSON.stringify({id:s.id,approve,event:s.data})});s.approved=approve;render()}
+    catch(e){$('err').textContent=e.message;btn.disabled=false}}
+  async function load(){$('err').textContent='';
+    try{const j=await api();subs=j.submissions||[];$('panel').hidden=false;$('login').hidden=true;render()}
+    catch(e){$('err').textContent=e.message==='Wrong password'?'That password is not right.':e.message;$('panel').hidden=true;$('login').hidden=false}}
+  $('login').addEventListener('submit',e=>{e.preventDefault();key=$('key').value;try{sessionStorage.setItem('craic-admin',key)}catch(err){}load()});
+  document.querySelector('.tabs').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(!b)return;filter=b.dataset.f;document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-pressed',x===b));render()});
+  if(key)load();
+})();
+</script>
+</body>
+</html>
