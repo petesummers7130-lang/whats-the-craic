@@ -43,7 +43,7 @@ export default async () => {
     const img = (e.images || []).filter((i) => i.ratio === '16_9').sort((a, b) => Math.abs(a.width - 640) - Math.abs(b.width - 640))[0];
     const price = (e.priceRanges || [])[0];
     const city = ((v.city || {}).name || '').trim();
-    rows.push([e.name, FIX[city] || city, v.name, `${d}/${m}/${y} ${t}`, e.url, genre, img?.url, price ? Math.round(price.min) : '', e.dates?.status?.code]
+    rows.push([String(e.name || "").trim(), FIX[city] || city, String(v.name || "").trim(), `${d}/${m}/${y} ${t}`, e.url, genre, img?.url, price ? Math.round(price.min) : '', e.dates?.status?.code]
       .map(clean).join('|'));
   }
 
